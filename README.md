@@ -12,10 +12,10 @@ A cost-controlled ADLC and CI/CD learning exercise: the same Grid Pulse daily-su
 
 ## Layout
 - `databricks/`: Lakeflow bundle ([README](databricks/README.md))
-- `snowflake/`: DCM project ([README](snowflake/README.md), pending)
+- `snowflake/`: DCM project ([README](snowflake/README.md))
 - `fabric/`: MLV notebook, semantic model, report, parameter.yml ([README](fabric/README.md))
 - `.github/workflows/`: platform CI and gated dev deploys; setup checklist in [.github/CICD.md](.github/CICD.md)
 - [MATRIX.md](MATRIX.md): pros and cons across the three
 
 ## Status
-See the matrix. Databricks build blocked by trial compute, Snowflake not started, Fabric verified.
+See the matrix. Fabric and Snowflake built and verified against the Grid Pulse numbers; Databricks build blocked by trial compute.
