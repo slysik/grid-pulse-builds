@@ -1,0 +1,68 @@
+name: CD Snowflake (dev)
+# Phase 2. Inert until repo variable CICD_ENABLE_CD_SNOWFLAKE == 'true'; then waits for a required reviewer on the
+# "snowflake-dev" environment. Target is hard-coded to GRIDPULSE_DEV. STAGE/PROD are never referenced.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'snowflake/**'
+      - '.github/workflows/cd-snowflake-dev.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-snowflake-dev
+  cancel-in-progress: false
+
+env:
+  SNOW_DCM_DIR: snowflake
+  SNOW_TARGET: GRIDPULSE_DEV
+
+jobs:
+  deploy:
+    if: vars.CICD_ENABLE_CD_SNOWFLAKE == 'true'
+    runs-on: ubuntu-latest
+    environment: snowflake-dev   # required reviewer configured in repo settings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install "snowflake-cli>=3.24.0,<4"
+      - name: Plan, then deploy to GRIDPULSE_DEV
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOW_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOW_ROLE: ${{ vars.SNOWFLAKE_ROLE }}
+          SNOW_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          set -eo pipefail
+          umask 077
+          key="$RUNNER_TEMP/snow_key.p8"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$key"
+          extra=()
+          [ -n "$SNOW_ROLE" ] && extra+=(--role "$SNOW_ROLE")
+          [ -n "$SNOW_WAREHOUSE" ] && extra+=(--warehouse "$SNOW_WAREHOUSE")
+          conn=(-x --account "$SNOW_ACCOUNT" --user "$SNOW_USER" --authenticator SNOWFLAKE_JWT --private-key-file "$key" "${extra[@]}")
+          alias="gh-${GITHUB_SHA::7}"
+          snow dcm plan --target "$SNOW_TARGET" --from "$SNOW_DCM_DIR" --save-output "${conn[@]}" | tee "$RUNNER_TEMP/plan.txt"
+          # Heuristic only: the plan.json schema is not verified. Surfaces any line mentioning DROP for the reviewer's log.
+          if grep -Eiq '\bDROP\b' "$RUNNER_TEMP/plan.txt"; then
+            echo "::warning title=Plan mentions DROP::Review plan output above; deploy will drop objects no longer defined."
+          fi
+          snow dcm deploy --target "$SNOW_TARGET" --from "$SNOW_DCM_DIR" --alias "$alias" --save-output "${conn[@]}" | tee "$RUNNER_TEMP/deploy.txt"
+          {
+            echo '### Snowflake deploy: GRIDPULSE_DEV'
+            echo "- Commit: ${{ github.sha }} (deployment alias: $alias)"
+            echo "- Account: $SNOW_ACCOUNT, target $SNOW_TARGET (DEV only)"
+            echo '- Plan and deploy output:'
+            echo '~~~'
+            tail -n 60 "$RUNNER_TEMP/deploy.txt"
+            echo '~~~'
+            echo '**Rollback:** git revert this commit on main and merge; this workflow redeploys the previous definitions.'
+            echo 'DCM deployment history/restore commands are not verified here; check docs.snowflake.com DCM Projects before relying on them.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

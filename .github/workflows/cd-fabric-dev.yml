@@ -1,0 +1,67 @@
+name: CD Fabric (dev)
+# Phase 2. Inert until repo variable CICD_ENABLE_CD_FABRIC == 'true'; then waits for a required reviewer on the
+# "fabric-dev" environment. Deploys to MY dev workspace only; scripts/ci/fabric_deploy.py refuses a wrong tenant,
+# a non-dev env name, or any workspace id on FABRIC_BLOCKED_WORKSPACE_IDS (put the Avon Risk workspaces there).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'fabric/grid-pulse/**'
+      - 'scripts/ci/fabric_deploy.py'
+      - 'scripts/ci/validate_fabric_items.py'
+      - '.github/workflows/cd-fabric-dev.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-fabric-dev
+  cancel-in-progress: false
+
+env:
+  FABRIC_ITEMS_DIR: fabric/grid-pulse
+
+jobs:
+  deploy:
+    if: vars.CICD_ENABLE_CD_FABRIC == 'true'
+    runs-on: ubuntu-latest
+    environment: fabric-dev   # required reviewer configured in repo settings
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FABRIC_ENV_NAME: dev
+      FABRIC_WORKSPACE_ID: ${{ vars.FABRIC_DEV_WORKSPACE_ID }}
+      FABRIC_DEV_TENANT_ID: ${{ vars.FABRIC_DEV_TENANT_ID }}
+      FABRIC_BLOCKED_WORKSPACE_IDS: ${{ vars.FABRIC_BLOCKED_WORKSPACE_IDS }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install fabric-cicd pyyaml
+      - name: Offline validation
+        run: python3 scripts/ci/validate_fabric_items.py "$FABRIC_ITEMS_DIR"
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Guards and plan (dry run)
+        run: python3 scripts/ci/fabric_deploy.py "$FABRIC_ITEMS_DIR" --dry-run
+      - name: Publish to dev (publish only, never deletes)
+        run: python3 scripts/ci/fabric_deploy.py "$FABRIC_ITEMS_DIR" | tee "$RUNNER_TEMP/deploy.txt"
+      - name: Report
+        run: |
+          {
+            echo '### Fabric deploy: dev workspace'
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Workspace id: $FABRIC_WORKSPACE_ID (env dev)"
+            echo '~~~'
+            cat "$RUNNER_TEMP/deploy.txt"
+            echo '~~~'
+            echo '**Rollback:** git revert this commit on main and merge; this workflow republishes the previous definitions.'
+            echo 'fabric-cicd has no rollback and this workflow never unpublishes, so items removed from git stay in the workspace; delete by hand.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
