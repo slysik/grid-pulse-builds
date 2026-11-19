@@ -1,0 +1,9 @@
+model GridPulse
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+
+ref table DailyDemand
+ref table OutageSummary
+ref table MeterLeaderboard
+

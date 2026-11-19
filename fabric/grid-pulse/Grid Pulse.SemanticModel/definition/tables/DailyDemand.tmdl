@@ -1,0 +1,47 @@
+table DailyDemand
+
+	/// Total energy delivered across all regions and days (kWh)
+	measure 'Total Energy Delivered' = SUM(DailyDemand[total_kwh])
+		formatString: #,##0.00
+
+	/// Total meter readings in the daily rollup
+	measure 'Total Readings' = SUM(DailyDemand[reading_count])
+		formatString: #,##0
+
+	column report_date
+		dataType: dateTime
+		formatString: m/d/yyyy
+		sourceColumn: report_date
+
+	column region
+		dataType: string
+		summarizeBy: none
+		sourceColumn: region
+
+	column total_kwh
+		dataType: double
+		summarizeBy: none
+		sourceColumn: total_kwh
+
+	column reading_count
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: reading_count
+
+	column avg_voltage
+		dataType: double
+		summarizeBy: none
+		sourceColumn: avg_voltage
+
+	column max_temp_c
+		dataType: double
+		summarizeBy: none
+		sourceColumn: max_temp_c
+
+	partition DailyDemand = entity
+		mode: directLake
+		source
+			entityName: grid_daily_region_demand
+			schemaName: gold
+			expressionSource: DL_GridPulse
+

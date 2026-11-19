@@ -1,0 +1,46 @@
+table OutageSummary
+
+	/// Total estimated outage cost across all regions (USD)
+	measure 'Total Outage Cost' = SUM(OutageSummary[total_cost_usd])
+		formatString: $#,##0
+
+	/// Total customers affected by outages
+	measure 'Total Customers Affected' = SUM(OutageSummary[total_customers_affected])
+		formatString: #,##0
+
+	/// Total number of outages
+	measure 'Total Outages' = SUM(OutageSummary[outage_count])
+		formatString: #,##0
+
+	column region
+		dataType: string
+		summarizeBy: none
+		sourceColumn: region
+
+	column outage_count
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: outage_count
+
+	column total_customers_affected
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: total_customers_affected
+
+	column total_cost_usd
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: total_cost_usd
+
+	column total_downtime_min
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: total_downtime_min
+
+	partition OutageSummary = entity
+		mode: directLake
+		source
+			entityName: grid_outage_summary
+			schemaName: gold
+			expressionSource: DL_GridPulse
+

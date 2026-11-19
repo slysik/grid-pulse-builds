@@ -1,0 +1,6 @@
+expression DL_GridPulse =
+		let
+			Source = AzureStorage.DataLake("https://onelake.dfs.fabric.microsoft.com/54634e0b-7658-49fa-8441-0ba7bc594ada/eadde634-753a-45f4-a622-007644ac9edd", [HierarchicalNavigation=true])
+		in
+			Source
+
