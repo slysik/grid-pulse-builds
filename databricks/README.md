@@ -20,6 +20,9 @@ Serverless pipeline, triggered only, no schedule anywhere in the bundle. `mv_dry
 - `bundle validate --strict`: OK. `bundle deploy -t dev`: pipeline created.
 - First (only) run attempt failed at pipeline start: `RESOURCE_EXHAUSTED: Cannot create the resource` (free-trial compute limit). No retry loop was run, per the cost rules. The SQL warehouse was also reported blocked, so row counts could not be read.
 
+## Second attempt: SQL warehouse materialized view (2026-11-19)
+Tried `CREATE MATERIALIZED VIEW` on warehouse `ab98e3090cc13476` (Serverless Starter, 2X-Small) as a manual-refresh alternative to the pipeline. The statement was rejected immediately ("The request could not be processed by the warehouse"), and `databricks warehouses start` returned "Cannot create the resource, please try again later." The warehouse stayed STOPPED. One attempt each, no retries. The pipeline was also retried once and failed with the same RESOURCE_EXHAUSTED error. The workspace refuses to create any compute, so both paths are blocked until the trial limit clears. The documented SQL-warehouse form is `CREATE MATERIALIZED VIEW ... AS ...` then `REFRESH MATERIALIZED VIEW ...` (no SCHEDULE), and note a warehouse MV also runs on a serverless pipeline behind the scenes (docs).
+
 ## Cost
 Unknown. The run failed before creating compute; no billing view was readable (system tables need a SQL warehouse).
 
