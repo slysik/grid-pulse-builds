@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.databricks/
+*.p8
+*.pem
+out/

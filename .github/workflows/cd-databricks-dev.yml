@@ -1,0 +1,58 @@
+name: CD Databricks (dev)
+# Phase 2. Inert until repo variable CICD_ENABLE_CD_DATABRICKS == 'true'. Even then, the job waits for a
+# required reviewer on the "databricks-dev" environment. Target is hard-coded to dev.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'databricks/**'
+      - '.github/workflows/cd-databricks-dev.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-databricks-dev
+  cancel-in-progress: false
+
+env:
+  DBX_BUNDLE_DIR: databricks
+
+jobs:
+  deploy:
+    if: vars.CICD_ENABLE_CD_DATABRICKS == 'true'
+    runs-on: ubuntu-latest
+    environment: databricks-dev   # required reviewer configured in repo settings
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@v1.27.0
+      - name: Validate (strict) before deploy
+        working-directory: ${{ env.DBX_BUNDLE_DIR }}
+        run: databricks bundle validate --strict -t dev
+      - name: Deploy to dev
+        working-directory: ${{ env.DBX_BUNDLE_DIR }}
+        # No --auto-approve: if the deploy would delete or recreate a resource it needs interactive approval,
+        # which a non-interactive runner cannot give, so the job fails instead of destroying anything.
+        run: databricks bundle deploy -t dev --fail-on-active-runs
+      - name: Report what was deployed
+        working-directory: ${{ env.DBX_BUNDLE_DIR }}
+        run: |
+          {
+            echo '### Databricks deploy: dev'
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Workspace: $DATABRICKS_HOST"
+            echo "- Bundle: $DBX_BUNDLE_DIR, target dev"
+            echo '- Deployed resources (databricks bundle summary):'
+            echo '~~~'
+            databricks bundle summary -t dev
+            echo '~~~'
+            echo '**Rollback:** git revert this commit on main, merge, and let this workflow redeploy. The bundle has no native'
+            echo 'rollback. To remove everything this bundle created in dev: run "databricks bundle destroy -t dev" manually.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

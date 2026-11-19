@@ -1,0 +1,178 @@
+name: Platform CI
+# Phase 1: read-only checks for Grid Pulse on Databricks, Snowflake and Fabric. Never deploys.
+# Runs alongside (does not replace) ci.yml. Make "platform-ci-gate" the required status check.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DBX_BUNDLE_DIR: databricks
+  DBX_TARGET: dev
+  SNOW_DCM_DIR: snowflake
+  SNOW_TARGET: GRIDPULSE_DEV
+  FABRIC_ITEMS_DIR: fabric/grid-pulse
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      databricks: ${{ steps.diff.outputs.databricks }}
+      snowflake: ${{ steps.diff.outputs.snowflake }}
+      fabric: ${{ steps.diff.outputs.fabric }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          shared='^(\.github/workflows/platform-ci\.yml|scripts/ci/)'
+          flag() { if echo "$files" | grep -Eq "$1|$shared"; then echo true; else echo false; fi; }
+          echo "databricks=$(flag '^databricks/')" >> "$GITHUB_OUTPUT"
+          echo "snowflake=$(flag '^snowflake/')" >> "$GITHUB_OUTPUT"
+          echo "fabric=$(flag '^fabric/')" >> "$GITHUB_OUTPUT"
+
+  databricks:
+    needs: changes
+    if: needs.changes.outputs.databricks == 'true'
+    runs-on: ubuntu-latest
+    environment: databricks-ci   # no reviewers; exists so the OIDC subject is environment:databricks-ci
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight
+        id: pre
+        env:
+          HAVE_HOST: ${{ vars.DATABRICKS_HOST != '' }}
+          HAVE_CLIENT: ${{ secrets.DATABRICKS_CLIENT_ID != '' }}
+        run: |
+          skip() {
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Databricks check skipped::$1"
+            printf '### Databricks bundle check: SKIPPED\n%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          [ -f "$DBX_BUNDLE_DIR/databricks.yml" ] || skip "No databricks.yml at $DBX_BUNDLE_DIR (Grid Pulse bundle not committed yet)."
+          [ "$HAVE_HOST" = true ] || skip "Repository variable DATABRICKS_HOST is not set (see .github/CICD.md checklist)."
+          [ "$HAVE_CLIENT" = true ] || skip "Secret DATABRICKS_CLIENT_ID is not set (see .github/CICD.md checklist)."
+          echo "run=true" >> "$GITHUB_OUTPUT"
+      - uses: databricks/setup-cli@v1.27.0
+        if: steps.pre.outputs.run == 'true'
+      - name: databricks bundle validate (strict)
+        if: steps.pre.outputs.run == 'true'
+        working-directory: ${{ env.DBX_BUNDLE_DIR }}
+        env:
+          DATABRICKS_AUTH_TYPE: github-oidc
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+        run: |
+          set +e
+          databricks bundle validate --strict -t "$DBX_TARGET" 2>&1 | tee "$RUNNER_TEMP/validate.txt"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=databricks bundle validate failed::Bundle $DBX_BUNDLE_DIR, target $DBX_TARGET failed validation (exit $rc). See log above."
+            { echo '### Databricks bundle check: FAILED'; echo "Target $DBX_TARGET, exit $rc"; echo '~~~'; tail -n 40 "$RUNNER_TEMP/validate.txt"; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$rc"
+          fi
+          { echo '### Databricks bundle check: passed'; echo "Bundle $DBX_BUNDLE_DIR validated (strict) for target $DBX_TARGET. Nothing deployed."; } >> "$GITHUB_STEP_SUMMARY"
+
+  snowflake:
+    needs: changes
+    if: needs.changes.outputs.snowflake == 'true'
+    runs-on: ubuntu-latest
+    environment: snowflake-ci   # no reviewers; holds the read-only CI credentials
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight
+        id: pre
+        env:
+          HAVE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT != '' }}
+          HAVE_USER: ${{ secrets.SNOWFLAKE_USER != '' }}
+          HAVE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY != '' }}
+        run: |
+          skip() {
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Snowflake check skipped::$1"
+            printf '### Snowflake DCM plan: SKIPPED\n%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          [ -f "$SNOW_DCM_DIR/manifest.yml" ] || skip "No manifest.yml at $SNOW_DCM_DIR (DCM scaffold not committed yet)."
+          [ "$HAVE_ACCOUNT" = true ] && [ "$HAVE_USER" = true ] && [ "$HAVE_KEY" = true ] || skip "Snowflake CI secrets missing (SNOWFLAKE_ACCOUNT/USER/PRIVATE_KEY); the key pair must be registered first. See .github/CICD.md."
+          echo "run=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        if: steps.pre.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+      - name: Install Snowflake CLI (DCM needs >= 3.24)
+        if: steps.pre.outputs.run == 'true'
+        run: pip install "snowflake-cli>=3.24.0,<4"
+      - name: snow dcm plan (read-only)
+        if: steps.pre.outputs.run == 'true'
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+          SNOW_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOW_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOW_ROLE: ${{ vars.SNOWFLAKE_ROLE }}
+          SNOW_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          set +e
+          umask 077
+          key="$RUNNER_TEMP/snow_key.p8"
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$key"
+          extra=()
+          [ -n "$SNOW_ROLE" ] && extra+=(--role "$SNOW_ROLE")
+          [ -n "$SNOW_WAREHOUSE" ] && extra+=(--warehouse "$SNOW_WAREHOUSE")
+          snow dcm plan --target "$SNOW_TARGET" --from "$SNOW_DCM_DIR" --save-output \
+            -x --account "$SNOW_ACCOUNT" --user "$SNOW_USER" \
+            --authenticator SNOWFLAKE_JWT --private-key-file "$key" "${extra[@]}" 2>&1 | tee "$RUNNER_TEMP/plan.txt"
+          rc=${PIPESTATUS[0]}
+          rm -f "$key"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=snow dcm plan failed::Plan for target $SNOW_TARGET failed (exit $rc). Nothing was changed."
+            { echo '### Snowflake DCM plan: FAILED'; echo "Target $SNOW_TARGET, exit $rc"; echo '~~~'; tail -n 40 "$RUNNER_TEMP/plan.txt"; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$rc"
+          fi
+          { echo '### Snowflake DCM plan: passed'; echo "Target $SNOW_TARGET planned, read-only, nothing deployed."; echo '~~~'; tail -n 40 "$RUNNER_TEMP/plan.txt"; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+
+  fabric:
+    needs: changes
+    if: needs.changes.outputs.fabric == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Validate Fabric item definitions (offline)
+        run: |
+          if [ ! -d "$FABRIC_ITEMS_DIR" ]; then
+            echo "::warning title=Fabric check skipped::No $FABRIC_ITEMS_DIR (Grid Pulse Fabric items not committed yet)."
+            printf '### Fabric item validation: SKIPPED\nNo %s.\n' "$FABRIC_ITEMS_DIR" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 scripts/ci/validate_fabric_items.py "$FABRIC_ITEMS_DIR" --summary-file "$GITHUB_STEP_SUMMARY"
+
+  platform-ci-gate:
+    if: always()
+    needs: [changes, databricks, snowflake, fabric]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any platform check failed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e '[.[].result] | any(. == "failure" or . == "cancelled") | not' > /dev/null
