@@ -1,0 +1,21 @@
+# Grid Pulse daily-summary MV: DCM project, GRIDPULSE_DEV ONLY (no STAGE/PROD targets in this repo).
+# Adapted from the Grid Pulse DCM scaffold. project_owner is ACCOUNTADMIN for this dry run; a least-privilege
+# DCM_DEVELOPER role is the follow-up (see README).
+manifest_version: 2
+type: DCM_PROJECT
+default_target: GRIDPULSE_DEV
+
+targets:
+  GRIDPULSE_DEV:
+    account_identifier: OMYJUBN-IC62944
+    project_name: GRIDPULSE_DCM.PROJECTS.GRIDPULSE_DCM_DEV
+    project_owner: ACCOUNTADMIN
+    templating_config: DEV
+
+templating:
+  defaults:
+    wh_size: "X-SMALL"
+    target_lag: "1 day"
+  configurations:
+    DEV:
+      env_suffix: "_DEV"
