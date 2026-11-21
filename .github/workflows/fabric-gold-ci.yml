@@ -1,0 +1,126 @@
+name: Fabric Gold CI
+# TeveBot, phase 1. Pull request checks only. This workflow never deploys, never merges, never pushes.
+# Read it top to bottom: validate -> test -> review (TeveBot Agent) -> notify -> gate.
+# The gate job (fabric-gold-gate) is the one check to mark "required" in branch protection.
+# TeveBot Agent's review never approves or blocks; a red validate or test job does.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fabric-gold-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    # Offline Fabric item validation. No credentials, no workspace access.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Validate Fabric items
+        run: python3 scripts/ci/validate_fabric_items.py fabric/grid-pulse --summary-file "$GITHUB_STEP_SUMMARY"
+
+  test:
+    # Unit tests for the scripts, the workflow contract, the review skill, and the Gold model.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml duckdb
+      - name: Script and contract tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Gold model tests
+        run: python3 -m unittest discover -s fabric/tests -v
+
+  review:
+    # TeveBot Agent reviews the diff using the fabric-gold-review skill and posts PR comments.
+    # Skips draft PRs. Cost cap: --max-turns 5.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight (review secret)
+        id: pre
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAVE_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAVE_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAVE_API_KEY" = true ] || [ "$HAVE_OAUTH" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Rule: skip with a warning only while no merged PR has touched fabric/. After that, fail.
+          merged=$(gh pr list --state merged --base main --limit 100 --json files \
+            -q '[.[] | select(any(.files[]; .path | startswith("fabric/")))] | length')
+          if [ "${merged:-0}" -gt 0 ]; then
+            echo "::error title=TeveBot Agent review cannot run::No ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret, and fabric/ PRs already exist."
+            exit 1
+          fi
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo "::warning title=TeveBot Agent review skipped::No review secret yet and no merged fabric/ PR so far. Steve creates ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN."
+      - uses: anthropics/claude-code-action@v1
+        if: steps.pre.outputs.run == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are TeveBot Agent. Use the fabric-gold-review skill to review this pull request.
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            Review only the diff against main. Post your findings as a comment on the pull request.
+            You never approve, never block, never merge, and never invent commands.
+          claude_args: "--max-turns 5"
+
+  notify:
+    # Tell #fabric-cicd what happened. Needs the SLACK_WEBHOOK_URL secret; without it, warn and move on.
+    needs: [validate, test, review]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHECKS: ${{ (needs.validate.result == 'success' && needs.test.result == 'success') && 'checks_passed' || 'checks_failed' }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning title=Slack notice skipped::SLACK_WEBHOOK_URL is not set."
+            exit 0
+          fi
+          python3 scripts/ci/notify_slack.py --event "$CHECKS" --repo "$GITHUB_REPOSITORY" \
+            --pr "${{ github.event.pull_request.number }}" --url "${{ github.event.pull_request.html_url }}"
+
+  fabric-gold-gate:
+    # The single required check. Fails if validate or test did not succeed. Ignores review and notify.
+    needs: [validate, test]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Gate
+        env:
+          VALIDATE: ${{ needs.validate.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "validate=$VALIDATE test=$TEST"
+          [ "$VALIDATE" = success ] && [ "$TEST" = success ]
