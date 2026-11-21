@@ -1,0 +1,12 @@
+{
+  "model": "gold.mlv_grid_daily_summary",
+  "verified_on": "2026-11-19",
+  "rows": 40,
+  "outage_count": 30,
+  "outage_cost_usd": 203947,
+  "customers_affected": 6109,
+  "daily_kwh": 109417.775,
+  "kwh_tolerance": 0.000001,
+  "fixture_silver_readings_rows": 11520,
+  "fixture_silver_outages_rows": 30
+}
