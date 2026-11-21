@@ -1,2 +1,8 @@
+.databricks/
 __pycache__/
 *.pyc
+*.p8
+*.pem
+.env
+.env.*
+out/
