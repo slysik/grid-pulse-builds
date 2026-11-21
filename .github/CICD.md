@@ -31,11 +31,12 @@ CI only. No deploy. Deploy is a later spec.
 - Repo variable `FABRIC_DEV_WORKSPACE_ID` = 54634e0b-7658-49fa-8441-0ba7bc594ada (reserved for the later deploy spec; no job reads it yet).
 - Branch protection on main: no direct pushes, no force pushes, require `fabric-gold-gate`. Do not require a formal approval in the pilot (an author cannot approve their own PR). Availability on a private repo depends on the GitHub plan.
 
-## Slack
-Channel `#fabric-cicd` in Steve's own workspace. Webhook gives one-way notices. Interactive options (verify the one you pick, then record the result here):
-- Legacy Claude app in Slack (Pro, Max or Ultra): @Claude starts a cloud session; "Create PR" opens GitHub compare, Steve opens the PR. Free-workspace support unverified.
-- Claude Tag (Team or Enterprise): org Owner setup. Unverified for a free workspace.
-- Claude Code on the Mac with the Slack MCP plugin (`/plugin install slack`): read and post as Steve. Read the post tool name from `/mcp`.
+## Slack (decided 2026-11-21: webhook plus Slack MCP plugin on the Mac)
+Channel `#fabric-cicd` in Steve's own workspace.
+- **Notices out (CI to Slack):** incoming webhook, repo secret `SLACK_WEBHOOK_URL` (exists). Sent by `scripts/ci/notify_slack.py` from the `notify` job.
+- **Ask and read (Mac to Slack):** official Slack MCP plugin in Claude Code. Steve runs `/plugin install slack`, completes OAuth, and approves the integration as workspace admin. Use only one install route (the docs describe two). Then run `/mcp` and record the exact post tool name here: _not yet recorded_.
+- Posts through the plugin go out under Steve's name. There is no separate @TeveBot identity.
+- Not chosen: legacy @Claude app and Claude Tag (plan and free-workspace limits unverified).
 
 ## Rollback
 `git revert <merge-commit>` on a branch, then a new PR through the same loop. No shortcuts.
