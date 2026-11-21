@@ -1,0 +1,32 @@
+# Grid Pulse daily-summary materialized view on Databricks (Lakeflow, serverless, manual refresh only).
+#   databricks bundle validate --strict -t dev --profile <profile>
+#   databricks bundle deploy -t dev --profile <profile>
+#   databricks bundle run grid_pulse_mv_pipeline -t dev --profile <profile>
+bundle:
+  name: grid_pulse_mv
+
+variables:
+  catalog:
+    description: Unity Catalog catalog holding the Grid Pulse silver tables
+    default: fde
+  schema:
+    description: Schema that receives the new materialized view (isolated from fde.gold)
+    default: mv_dryrun
+
+resources:
+  pipelines:
+    grid_pulse_mv_pipeline:
+      name: grid-pulse-mv-dryrun
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true      # no clusters to size
+      continuous: false     # triggered only; no schedule is defined anywhere in this bundle
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ./src/mv_grid_daily_summary.sql
+
+targets:
+  dev:
+    mode: development
+    default: true
