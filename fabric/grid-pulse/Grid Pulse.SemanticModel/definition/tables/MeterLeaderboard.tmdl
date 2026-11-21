@@ -1,0 +1,42 @@
+table MeterLeaderboard
+
+	/// Total energy across all meters (kWh)
+	measure 'Total Meter Energy' = SUM(MeterLeaderboard[total_kwh])
+		formatString: #,##0.00
+
+	/// Highest single-meter energy total (kWh)
+	measure 'Top Meter Energy' = MAX(MeterLeaderboard[total_kwh])
+		formatString: #,##0.00
+
+	column meter_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: meter_id
+
+	column region
+		dataType: string
+		summarizeBy: none
+		sourceColumn: region
+
+	column customer_type
+		dataType: string
+		summarizeBy: none
+		sourceColumn: customer_type
+
+	column total_kwh
+		dataType: double
+		summarizeBy: none
+		sourceColumn: total_kwh
+
+	column avg_voltage
+		dataType: double
+		summarizeBy: none
+		sourceColumn: avg_voltage
+
+	partition MeterLeaderboard = entity
+		mode: directLake
+		source
+			entityName: grid_meter_leaderboard
+			schemaName: gold
+			expressionSource: DL_GridPulse
+

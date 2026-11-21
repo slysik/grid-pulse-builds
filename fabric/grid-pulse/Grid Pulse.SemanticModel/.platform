@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Grid Pulse"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "d3e6d8bf-86c2-4729-a12c-5e8247619d65"
+  }
+}

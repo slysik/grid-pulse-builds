@@ -1,0 +1,29 @@
+# fabric-cicd parameter file: makes the Grid Pulse items portable to another workspace.
+# The environment key (dev) must match the environment passed to FabricWorkspace(environment=...).
+# Ids below are the ones baked into the source workspace; they are replaced at deploy time.
+# Prerequisite in the target workspace: a Lakehouse named grid_pulse_lakehouse that already holds the
+# bronze/silver/gold tables (fabric-cicd copies item definitions, not lakehouse data).
+find_replace:
+  # Direct Lake semantic model: OneLake path embeds workspace id and lakehouse id
+  - find_value: "54634e0b-7658-49fa-8441-0ba7bc594ada"
+    replace_value:
+      dev: "$workspace.$id"
+    item_type: "SemanticModel"
+  - find_value: "eadde634-753a-45f4-a622-007644ac9edd"
+    replace_value:
+      dev: "$items.Lakehouse.grid_pulse_lakehouse.$id"
+    item_type: "SemanticModel"
+  # Notebook default lakehouse binding
+  - find_value: "54634e0b-7658-49fa-8441-0ba7bc594ada"
+    replace_value:
+      dev: "$workspace.$id"
+    item_type: "Notebook"
+  - find_value: "eadde634-753a-45f4-a622-007644ac9edd"
+    replace_value:
+      dev: "$items.Lakehouse.grid_pulse_lakehouse.$id"
+    item_type: "Notebook"
+  # Report is bound by connection to the semantic model id
+  - find_value: "66832363-984f-4bd5-8dac-816be41b583a"
+    replace_value:
+      dev: "$items.SemanticModel.Grid Pulse.$id"
+    item_type: "Report"

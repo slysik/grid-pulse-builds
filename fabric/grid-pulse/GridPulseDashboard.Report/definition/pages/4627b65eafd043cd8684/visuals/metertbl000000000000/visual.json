@@ -1,0 +1,147 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "metertbl000000000000",
+  "position": {
+    "x": 24,
+    "y": 456,
+    "width": 760,
+    "height": 252,
+    "z": 5000,
+    "tabOrder": 5000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "MeterLeaderboard"
+                    }
+                  },
+                  "Property": "meter_id"
+                }
+              },
+              "queryRef": "MeterLeaderboard.meter_id",
+              "nativeQueryRef": "meter_id"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "MeterLeaderboard"
+                    }
+                  },
+                  "Property": "region"
+                }
+              },
+              "queryRef": "MeterLeaderboard.region",
+              "nativeQueryRef": "region"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "MeterLeaderboard"
+                    }
+                  },
+                  "Property": "customer_type"
+                }
+              },
+              "queryRef": "MeterLeaderboard.customer_type",
+              "nativeQueryRef": "customer_type"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "MeterLeaderboard"
+                    }
+                  },
+                  "Property": "total_kwh"
+                }
+              },
+              "queryRef": "MeterLeaderboard.total_kwh",
+              "nativeQueryRef": "total_kwh"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "MeterLeaderboard"
+                    }
+                  },
+                  "Property": "avg_voltage"
+                }
+              },
+              "queryRef": "MeterLeaderboard.avg_voltage",
+              "nativeQueryRef": "avg_voltage"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "MeterLeaderboard"
+                  }
+                },
+                "Property": "total_kwh"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Meter Leaderboard (kWh)'"
+                }
+              }
+            },
+            "fontSize": {
+              "expr": {
+                "Literal": {
+                  "Value": "12D"
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
